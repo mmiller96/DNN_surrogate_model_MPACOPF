@@ -1,4 +1,6 @@
 *.csv filter=lfs diff=lfs merge=lfs -text
 *.h5 filter=lfs diff=lfs merge=lfs -text
+data/*.csv filter=lfs diff=lfs merge=lfs -text
+data/*.h5 filter=lfs diff=lfs merge=lfs -text
 data/entsoe_load_consumption_countries.csv filter=lfs diff=lfs merge=lfs -text
 data/ieee33dataset.h5 filter=lfs diff=lfs merge=lfs -text
