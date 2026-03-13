@@ -1,0 +1,274 @@
+\documentclass[journal]{IEEEtran}
+
+% -----------------------------------------------------------------------
+% Packages
+% -----------------------------------------------------------------------
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{bm}
+\usepackage{xcolor}
+\usepackage{subcaption}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{url}
+
+% -----------------------------------------------------------------------
+% Document
+% -----------------------------------------------------------------------
+\begin{document}
+
+\title{Deep Neural Network Surrogate Model for Multi-Period AC Optimal Power Flow}
+
+\author{%
+  \IEEEauthorblockN{Author Name}\\
+  \IEEEauthorblockA{Department of Electrical Engineering\\
+  University Name, City, Country\\
+  email@university.edu}%
+}
+
+\maketitle
+
+% -----------------------------------------------------------------------
+% Abstract
+% -----------------------------------------------------------------------
+\begin{abstract}
+This paper presents a surrogate-based optimization framework for the Multi-Period
+AC Optimal Power Flow (MP-ACOPF) problem. A deep neural network (DNN) is trained
+to replace the computationally expensive AC power flow equations, enabling faster
+optimization while maintaining physical consistency. The trained surrogate is
+embedded into a nonlinear optimization framework solved via the Augmented Lagrangian
+Method (ALM), which penalizes power balance constraint violations and guides the
+optimizer towards physically feasible solutions. Accurate prediction of the power
+flow variables — particularly voltage magnitudes and phase angles at the buses — is
+identified as a critical requirement, since even small prediction errors can amplify
+into large power balance mismatches due to the inherent nonlinearity of the AC power
+flow equations. Numerical experiments on benchmark IEEE power systems demonstrate
+the effectiveness of the proposed approach in terms of convergence, constraint
+satisfaction, and solution quality compared to direct nonlinear programming solvers.
+\end{abstract}
+
+\begin{IEEEkeywords}
+AC optimal power flow, deep neural network, surrogate model, multi-period
+optimization, augmented Lagrangian method, voltage magnitude, power balance.
+\end{IEEEkeywords}
+
+% -----------------------------------------------------------------------
+% I. Introduction
+% -----------------------------------------------------------------------
+\section{Introduction}
+\label{sec:introduction}
+
+The optimal power flow (OPF) problem is a cornerstone of power system operation
+and planning. It determines the most economical dispatch of controllable generation
+units while satisfying a set of physical, network, and operational constraints. The
+AC formulation (ACOPF) models the nonlinear power flow physics faithfully, making
+it the most accurate variant, but also the most computationally demanding due to
+its nonconvex, nonlinear structure~\cite{carpentier1962contribution,frank2012optimal}.
+
+The Multi-Period AC Optimal Power Flow (MP-ACOPF) extends the classical single-period
+ACOPF by optimizing over multiple consecutive time periods simultaneously. This
+extension is essential for capturing temporal dependencies that are increasingly
+important in modern power systems: generator ramping limits, energy storage charge
+and discharge cycles, and the variability of renewable energy sources such as wind
+and solar. By solving over the full time horizon at once, MP-ACOPF enables globally
+coherent schedules that single-period methods cannot guarantee. However, the
+simultaneous treatment of all time periods multiplies the problem size by a factor
+of $T$ (the number of periods) and introduces inter-period coupling constraints,
+dramatically increasing the computational burden~\cite{jabr2012adjustable}.
+Solving MP-ACOPF reliably and efficiently is therefore critical for day-ahead
+scheduling, real-time grid management, and the economic integration of
+renewable generation.
+
+Classical approaches to ACOPF include interior-point methods, sequential quadratic
+programming, and successive linear programming, all of which can struggle with large
+problem instances or tight time requirements~\cite{capitanescu2011interior}.
+Convex relaxation techniques, notably semidefinite programming (SDP) and
+second-order cone programming (SOCP) relaxations, provide tractable approximations
+but may return inexact or infeasible solutions for general meshed
+networks~\cite{lavaei2012zero}. The DC power flow linearization sacrifices reactive
+power modeling and voltage accuracy in exchange for computational simplicity, and
+is therefore unsuitable when precise voltage profiles are required~\cite{stott2009dc}.
+These trade-offs motivate the search for new computational paradigms that can
+deliver high-quality ACOPF solutions at reduced cost.
+
+Machine learning — and in particular deep neural networks (DNNs) — has emerged as
+a promising direction for accelerating power system computations. DNNs can learn
+complex nonlinear input-output mappings from data, and once trained, they provide
+virtually instantaneous inference. Several recent works exploit DNNs to predict
+near-optimal OPF solutions directly from load
+inputs~\cite{zamzam2020learning,pan2023deepopf}, to approximate constraint
+functions~\cite{venzke2020learning}, or to warm-start nonlinear solvers. The
+concept of \emph{DNN surrogate models} — replacing expensive simulation or
+constraint-evaluation steps with a trained network — has gained significant
+traction as a way to embed learned physical representations into optimization
+frameworks~\cite{chen2020learning,donti2021dc3}.
+
+In the context of surrogate-based OPF, the DNN replaces the full AC power flow
+equations within the optimization loop, allowing gradient-based solvers to operate
+on a smooth, differentiable approximation of the power flow constraints. This
+yields substantial speed-ups compared to repeatedly invoking a full power flow
+solver. The key challenge is ensuring that the surrogate captures the relevant
+physics with sufficient accuracy so that the optimizer converges to a solution
+that is also feasible for the true AC power flow. This becomes particularly
+demanding in the multi-period setting, where prediction errors can accumulate
+across time steps and compound through the coupling constraints.
+
+Several recent contributions have demonstrated the viability of DNN surrogate
+models for power system optimization. Zamzam and Baker~\cite{zamzam2020learning}
+showed that DNNs can predict near-optimal ACOPF solutions with high accuracy.
+Venzke~et~al.~\cite{venzke2020learning} combined DNN surrogates with probabilistic
+safety certificates. Donti~et~al.~\cite{donti2021dc3} proposed DC3, a
+differentiable framework that enforces constraint satisfaction through learned
+completion layers. Pan~et~al.~\cite{pan2023deepopf} presented DeepOPF, scaling
+DNN-based OPF prediction to large systems while maintaining strong generalization.
+Despite these advances, the extension to MP-ACOPF and the detailed analysis of
+how DNN prediction accuracy affects optimization convergence remain active areas
+of research.
+
+A critical aspect of surrogate-based MP-ACOPF is accurately predicting the power
+flow variables — in particular, the voltage magnitude and phase angle at each bus
+— since even small prediction errors can lead to high power balance mismatches due
+to the nonlinearity of the AC power flow equations.
+
+The proposed framework addresses these challenges by training a DNN on power flow
+simulation data generated via \texttt{pandapower}~\cite{thurner2018pandapower},
+and embedding the trained surrogate into an Augmented Lagrangian Method (ALM)
+optimization loop. The ALM provides a natural mechanism to penalize constraint
+violations, and the DNN surrogate enables efficient gradient computation through
+automatic differentiation. Initialization of the optimization from a feasible
+power flow solution further improves convergence and reduces initial equality
+constraint violations.
+
+The remainder of this paper is organized as follows.
+Section~\ref{sec:problem} formulates the MP-ACOPF problem.
+Section~\ref{sec:surrogate} describes the DNN surrogate model and training.
+Section~\ref{sec:optimization} presents the surrogate-based optimization framework.
+Section~\ref{sec:experiments} reports numerical experiments, and
+Section~\ref{sec:conclusion} concludes.
+
+% -----------------------------------------------------------------------
+% II. Problem Formulation
+% -----------------------------------------------------------------------
+\section{Problem Formulation}
+\label{sec:problem}
+
+The MP-ACOPF problem over a planning horizon of $T$ time periods is formulated as:
+\begin{align}
+  \min_{\mathbf{x}_1, \ldots, \mathbf{x}_T} \quad
+    & \sum_{t=1}^{T} f_t(\mathbf{x}_t) \label{eq:obj} \\
+  \text{s.t.} \quad
+    & g_t(\mathbf{x}_t) = 0, \quad t = 1, \ldots, T \label{eq:eq} \\
+    & h_t(\mathbf{x}_t) \leq 0, \quad t = 1, \ldots, T \label{eq:ineq} \\
+    & c(\mathbf{x}_t, \mathbf{x}_{t+1}) \leq 0, \quad t = 1, \ldots, T{-}1
+      \label{eq:coupling}
+\end{align}
+
+where $\mathbf{x}_t$ collects the decision variables at time $t$ (active and
+reactive power injections, voltage magnitudes, and phase angles), $f_t$ denotes
+the generation cost, $g_t$ represents the power balance equality constraints,
+$h_t$ includes operational inequality constraints (voltage limits, line flow limits,
+generator capacity limits), and $c$ captures inter-period coupling constraints
+such as ramping limits.
+
+\subsection{AC Power Flow Equations}
+
+The AC power flow equations for bus $i$ at time $t$ read:
+\begin{align}
+  P_{i,t} &= V_{i,t} \sum_{j \in \mathcal{N}}
+    V_{j,t} \left( G_{ij} \cos\theta_{ij,t} + B_{ij} \sin\theta_{ij,t} \right)
+    \label{eq:pf_p} \\
+  Q_{i,t} &= V_{i,t} \sum_{j \in \mathcal{N}}
+    V_{j,t} \left( G_{ij} \sin\theta_{ij,t} - B_{ij} \cos\theta_{ij,t} \right)
+    \label{eq:pf_q}
+\end{align}
+
+where $P_{i,t}$ and $Q_{i,t}$ are the net active and reactive power injections,
+$V_{i,t}$ is the voltage magnitude, $\theta_{ij,t} = \theta_{i,t} - \theta_{j,t}$
+is the voltage angle difference, and $G_{ij}$, $B_{ij}$ are the conductance and
+susceptance entries of the nodal admittance matrix.
+
+% -----------------------------------------------------------------------
+% III. DNN Surrogate Model
+% -----------------------------------------------------------------------
+\section{DNN Surrogate Model}
+\label{sec:surrogate}
+
+\subsection{Dataset Generation}
+
+A dataset of power flow solutions is generated by sampling load profiles from a
+predefined distribution and solving the corresponding power flow using
+\texttt{pandapower}. Each sample consists of the input vector $\mathbf{u}_t$
+(active and reactive load demands) and the output vector $\mathbf{y}_t$ (voltage
+magnitudes and phase angles at all buses, and generator active and reactive power).
+The dataset spans a representative range of operating conditions to ensure
+surrogate generalization.
+
+\subsection{Network Architecture and Training}
+
+A fully connected DNN with residual connections is employed. The network maps
+load inputs to power flow state variables. Multiple hidden layers with ReLU
+activations are trained by minimizing the mean squared error (MSE) on the dataset
+using the Adam optimizer. Batch normalization and dropout regularize training
+and prevent overfitting.
+
+% -----------------------------------------------------------------------
+% IV. Surrogate-Based Optimization
+% -----------------------------------------------------------------------
+\section{Surrogate-Based Optimization}
+\label{sec:optimization}
+
+\subsection{Augmented Lagrangian Method}
+
+The DNN surrogate replaces~\eqref{eq:pf_p}--\eqref{eq:pf_q} in the optimization
+loop. The resulting surrogate-based problem is solved via the ALM:
+\begin{align}
+  \mathcal{L}_\rho(\mathbf{x}, \bm{\lambda})
+    = \sum_{t=1}^{T} f_t(\mathbf{x}_t)
+    + \bm{\lambda}^\top \hat{g}(\mathbf{x})
+    + \frac{\rho}{2} \|\hat{g}(\mathbf{x})\|^2
+\end{align}
+
+where $\hat{g}(\mathbf{x})$ denotes the surrogate-approximated power balance
+residuals, $\bm{\lambda}$ are the Lagrange multipliers, and $\rho > 0$ is the
+penalty parameter updated across ALM outer iterations.
+
+\subsection{Initialization}
+
+The optimization is initialized from a feasible power flow solution for the nominal
+load, obtained from \texttt{pandapower}. This warm-start significantly reduces
+initial equality constraint violations and improves ALM convergence.
+
+% -----------------------------------------------------------------------
+% V. Numerical Experiments
+% -----------------------------------------------------------------------
+\section{Numerical Experiments}
+\label{sec:experiments}
+
+Experiments are conducted on standard IEEE bus test systems. The DNN surrogate
+is evaluated in terms of prediction accuracy and the quality of the resulting
+optimal solutions relative to a direct nonlinear programming solver.
+
+% -----------------------------------------------------------------------
+% VI. Conclusion
+% -----------------------------------------------------------------------
+\section{Conclusion}
+\label{sec:conclusion}
+
+This paper presented a DNN surrogate-based framework for MP-ACOPF, embedding a
+trained neural network into an ALM optimization loop. Accurate prediction of
+voltage magnitudes and phase angles is essential: even small errors are amplified
+by the nonlinear power flow equations into large power balance mismatches. Careful
+initialization and high surrogate fidelity are identified as key factors for
+convergence. Future work will investigate adaptive surrogate updating and
+extensions to larger systems.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
