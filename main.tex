@@ -45,7 +45,7 @@ optimization while maintaining physical consistency. The trained surrogate is
 embedded into a nonlinear optimization framework solved via the Augmented Lagrangian
 Method (ALM), which penalizes power balance constraint violations and guides the
 optimizer towards physically feasible solutions. Accurate prediction of the power
-flow variables — particularly voltage magnitudes and phase angles at the buses — is
+flow variables, particularly voltage magnitudes and phase angles at the buses, is
 identified as a critical requirement, since even small prediction errors can amplify
 into large power balance mismatches due to the inherent nonlinearity of the AC power
 flow equations. Numerical experiments on benchmark IEEE power systems demonstrate
@@ -97,15 +97,15 @@ is therefore unsuitable when precise voltage profiles are required~\cite{stott20
 These trade-offs motivate the search for new computational paradigms that can
 deliver high-quality ACOPF solutions at reduced cost.
 
-Machine learning — and in particular deep neural networks (DNNs) — has emerged as
+Machine learning, and in particular deep neural networks (DNNs), has emerged as
 a promising direction for accelerating power system computations. DNNs can learn
 complex nonlinear input-output mappings from data, and once trained, they provide
 virtually instantaneous inference. Several recent works exploit DNNs to predict
 near-optimal OPF solutions directly from load
 inputs~\cite{zamzam2020learning,pan2023deepopf}, to approximate constraint
 functions~\cite{venzke2020learning}, or to warm-start nonlinear solvers. The
-concept of \emph{DNN surrogate models} — replacing expensive simulation or
-constraint-evaluation steps with a trained network — has gained significant
+concept of \emph{DNN surrogate models}, which replace expensive simulation or
+constraint-evaluation steps with a trained network, has gained significant
 traction as a way to embed learned physical representations into optimization
 frameworks~\cite{chen2020learning,donti2021dc3}.
 
@@ -132,8 +132,8 @@ how DNN prediction accuracy affects optimization convergence remain active areas
 of research.
 
 A critical aspect of surrogate-based MP-ACOPF is accurately predicting the power
-flow variables — in particular, the voltage magnitude and phase angle at each bus
-— since even small prediction errors can lead to high power balance mismatches due
+flow variables, in particular the voltage magnitude and phase angle at each bus,
+since even small prediction errors can lead to high power balance mismatches due
 to the nonlinearity of the AC power flow equations.
 
 The proposed framework addresses these challenges by training a DNN on power flow
